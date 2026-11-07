@@ -77,6 +77,182 @@ Live runs require the local models and retrieval service described in the protoc
 models or substitute mock inference for the live results. The app's original
 12-case reference suite and legacy platform dashboard are separate demonstrations.
 
+## Future roadmap: Dify integration (planned)
+
+**Status: proposed; not implemented or evaluated.** This roadmap adds Dify as
+a second procurement-agent runtime while retaining AgentGate's custom agent,
+gateway, evaluation framework and existing published experiments. It does not
+claim that Dify improves task completion, security or latency.
+
+### Goals and architecture
+
+The planned integration would let a Dify agent choose procurement tools while
+AgentGate governs requests and independently evaluates their effects:
+
+```text
+User / benchmark runner
+        |
+        v
+Dify procurement agent ---- model provider (e.g. local Ollama)
+        |
+        | authenticated MCP calls
+        v
+AgentGate MCP endpoint
+        +-- authorization, tool schemas and procurement policies
+        +-- parameter-bound approval and execution audit
+        +-- sandbox catalog, document and purchase tools
+        +-- PLANNED tool-result screening and bounded recovery
+                    |
+                    +-- DeBERTa detection
+                    +-- authorized FAISS retrieval
+                    +-- rescored passages and source citations
+        |
+        v
+Independent evaluator: sandbox state, answer, citations, traces and timing
+```
+
+The screening boundary is a **design target**, not existing Dify integration.
+AgentGate's present DeBERTa filtering and recovery run inside its own agent
+step. Calling the MCP gateway alone does not establish that Dify receives
+screened tool results; native Dify knowledge retrieval and other input paths
+could also bypass screening. The first milestone uses synthetic procurement
+data and sandbox effects, not real purchases or supplier messages.
+
+### Phase 1: establish compatibility
+
+1. Select and record a Dify release, deployment method, dependencies, agent
+   mode, plugin versions and MCP transport. Check the selected version's
+   documentation because these interfaces and deployment requirements change.
+   See the [Dify repository](https://github.com/langgenius/dify).
+2. Start Dify locally and configure a compatible model provider. For the first
+   comparison, prefer the same Ollama model and model digest used by the
+   existing agent. Record supported generation settings and defaults.
+3. Start AgentGate, create a dedicated organization-scoped MCP credential and
+   configure the exact organization context and authentication headers in the
+   Dify client. Keep tokens, local paths and real data out of the repository.
+4. Verify container-to-host connectivity, MCP discovery and calls, transport
+   compatibility, session behavior, timeouts and token revocation. Test that
+   missing, invalid, revoked or cross-organization credentials fail.
+5. Document exact setup steps and record any incompatibility. Do not assume that
+   a given Dify release supports AgentGate's approval flow without testing it.
+
+**Deliverable:** a reproducible local setup and a smoke test that discovers
+allowed tools and performs an authorized, tenant-scoped read.
+
+### Phase 2: procurement agent and approvals
+
+1. Configure a Dify agent that dynamically chooses among supplier-document,
+   catalog and draft-purchase tools for the user's procurement task. Define the
+   system instructions, tool descriptions, output format and execution budget.
+2. Route all consequential calls through AgentGate. Preserve exact arguments,
+   source and citation identifiers, proposal IDs, pending status and tool
+   outcomes when mapping MCP responses into Dify.
+3. Define the asynchronous approval lifecycle: submit the proposal, display or
+   retain its ID, wait or poll with a bounded timeout, and continue only after
+   AgentGate records a decision. Verify whether the selected Dify version can
+   pause and resume; otherwise design a narrowly scoped external adapter.
+4. Test parameter fingerprint binding, denial, expiry, reuse, changed arguments,
+   duplicate requests, policy changes and organization isolation. A scripted
+   benchmark reviewer must remain distinguishable from actual human review.
+5. Correlate the Dify run with AgentGate's policy decisions, approval events,
+   execution journal and hash-chain audit without disclosing credentials.
+
+**Acceptance:** a permitted synthetic task creates at most its authorized
+draft; denied, changed, expired and duplicate proposals produce no unauthorized
+effects. Document any unsupported behavior instead of bypassing controls.
+
+### Phase 3: integrate DeBERTa and recovery
+
+1. Inventory every untrusted input reaching Dify, including MCP tool responses,
+   retrieved passages, uploaded documents, native knowledge nodes and other
+   tools. Disable or explicitly route paths not covered by the intended guard.
+2. Design a gateway response layer or Dify-side adapter that scores relevant
+   responses and passages **before model consumption**. Initially use the
+   existing frozen DeBERTa checkpoint and validation-selected threshold.
+3. Retain original evidence and scores for audit while sending only screened
+   content and permitted citation metadata to the agent. Verify the actual model
+   input, not merely the gateway's recorded decision.
+4. After a block, allow at most one read-only recovery search over the
+   authorized organization corpus using the original user request. Exclude
+   blocked sources, rescore every fallback passage, preserve citations and
+   return explicit no-evidence status when suitable evidence is unavailable.
+5. Define and test failure behavior for detector outage, retrieval errors,
+   malformed or oversized results, timeouts, repeated calls and missing
+   evidence. Never pass unchecked fallback text after a scoring failure.
+6. Test mixed clean/malicious passages, a poisoned fallback, absent fallback,
+   duplicate sources, cross-tenant access and attempts to bypass screening.
+
+**Acceptance:** blocked text is absent from the model input, every delivered
+replacement passage has a recorded score, and recovery creates no write or
+external action. Do not describe this protection as complete until verified.
+
+### Phase 4: benchmark integration and evaluation
+
+1. Implement a Dify runner adapter that records scenario and condition, runtime
+   and model identity, configuration, final answer, tool and approval events,
+   sandbox effects, returned citations, tokens, latency, errors and termination.
+   Keep outcome checks independent of Dify and gateway verdicts.
+2. Author fresh clean/attack scenario pairs covering evidence retrieval, answer
+   contamination, unauthorized tool use, approval manipulation, missing
+   fallback evidence and poisoned replacement passages. Reserve separate
+   development scenarios for debugging; freeze the evaluation set before runs.
+3. Preregister the matrix, trial count, order, stopping rules and primary
+   metrics. Compare Dify and the custom agent using the same tasks, model digest,
+   synthetic corpus, gateway policy, scripted reviewer, detector and threshold
+   where feasible. Record differences in prompts, tool schemas, retrieval,
+   generation settings, budgets and orchestration as possible confounders.
+4. Reset and isolate sandbox state for every episode. Alternate or randomize
+   order, record supported seeds, and set equal time and turn limits where
+   possible. Retain errors, timeouts and incomplete episodes in denominators;
+   define retries before the experiment.
+5. Report clean and attacked task completion, attack success, unauthorized
+   effects, citation correctness, false alarms, errors, tokens and end-to-end
+   latency. Include counts and denominators, per-model and per-family results,
+   paired gains/losses and uncertainty where the sample supports it.
+6. Document cold versus warm runs and retrieval/model cache effects. Distinguish
+   a comparison of agent runtimes using shared components from a comparison of
+   entire application stacks. Do not attribute stack-level differences to Dify
+   alone or generalize a small authored pilot to production.
+7. Freeze a manifest before inference with hashes of scenarios, code, sanitized
+   workflow export, model artifacts and configuration. Save redacted trajectories
+   and machine-readable results so independent outcome checks replay offline.
+
+**Acceptance:** every scheduled cell appears once, replayed outcomes reproduce
+the report, altered evidence or configuration is detected, and prior frozen
+AgentGate reports remain unchanged. Existing benchmark numbers are not Dify
+results.
+
+### Phase 5: release and operational checks
+
+1. Publish versioned setup, reproducibility and troubleshooting documentation;
+   include a sanitized workflow export if supported. Explain retrieval ownership
+   and the screening coverage of each input path.
+2. Add unit and integration tests for MCP authentication, gateway enforcement,
+   approval transitions, screening, recovery, tenant isolation and adapter
+   behavior. Include tests for missing cells, changed outcomes and blocked
+   evidence reintroduced into model input.
+3. Add offline evidence verification to CI. Keep live inference optional unless
+   the CI environment supplies the required models and services; do not label
+   fixture-only checks as real-model results.
+4. Scan and manually review workflow exports, logs and public artifacts for
+   personal information, tokens and local paths. Publish only synthetic data.
+5. Publish a new versioned report with the measured results, configuration,
+   limitations and exact commit only after the integration and evaluation run.
+
+### Open decisions
+
+- **Interface:** verify direct MCP support for AgentGate's authentication,
+  transport and asynchronous approvals; build an adapter only if required.
+- **Retrieval:** prefer AgentGate's existing retrieval for the controlled
+  comparison; assess Dify-native RAG separately unless corpus, chunking,
+  embedding and citation equivalence can be demonstrated.
+- **Guard placement:** choose a gateway response layer or Dify-side adapter based
+  on coverage and prove that no enabled untrusted input bypasses it.
+- **Scope:** decide whether the experiment compares agent runtimes or complete
+  stacks; document unavoidable differences before collecting results.
+- **Go/no-go:** use compatibility findings and implementation cost to decide
+  whether Dify adds sufficient evaluation or demonstration value.
+
 ## Current scope
 
 - Register an immutable agent version with explicit tools, destinations, approval requirements, and sensitive-data controls.
