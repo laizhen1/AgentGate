@@ -253,6 +253,19 @@ results.
 - **Go/no-go:** use compatibility findings and implementation cost to decide
   whether Dify adds sufficient evaluation or demonstration value.
 
+## License
+
+AgentGate-authored software is available under the [PolyForm Noncommercial
+License 1.0.0](LICENSE). It permits noncommercial use, modification and
+redistribution subject to its terms. Commercial use requires a separate grant
+of rights from the applicable copyright holder. The license explicitly permits
+uses by certain educational, research, charitable, public-service and government
+organizations, as described in its text.
+
+This project is **source-available**, not OSI-approved open source. Third-party
+code, data, model weights and other assets remain subject to their own applicable
+licenses and notices; the AgentGate license does not replace those terms.
+
 ## Current scope
 
 - Register an immutable agent version with explicit tools, destinations, approval requirements, and sensitive-data controls.
